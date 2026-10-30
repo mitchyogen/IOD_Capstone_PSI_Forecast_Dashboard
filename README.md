@@ -107,7 +107,3 @@ forecast origin can be assembled. Historical weather lag gaps are handled by
 *the already-fitted model imputer*, rather than fabricated values. Current
 weather readings and 24-hour PSI history remain required. This update has
 passed local unit tests but still needs a live NEA and training-row parity check.
-
-To investigate an unavailable forecast, open **Technical reason** in the
-Streamlit dashboard and copy the detailed error. A forecast will not be shown
-when current readings or essential PSI history are unavailable.
