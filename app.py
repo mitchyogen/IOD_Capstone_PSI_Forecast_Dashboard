@@ -33,6 +33,14 @@ st.markdown(CSS,unsafe_allow_html=True)
 def cached_latest(api_key: str):
     client=NEAClient(api_key=api_key)
     raw,metadata=client.fetch('psi')
+    if not raw:
+        # Some API responses provide no latest readings without an explicit date.
+        # Retry with today's and yesterday's Singapore calendar dates.
+        from datetime import date, timedelta
+        today=datetime.now(SG).date()
+        for day in (today, today-timedelta(days=1)):
+            raw,metadata=client.fetch('psi',day)
+            if raw:break
     return parse_psi(raw,metadata)
 
 @st.cache_data(ttl=900,show_spinner=False)
@@ -104,6 +112,7 @@ def live_dashboard():
     except Exception as exc:
         st.error('NEA PSI data is currently unavailable. No values or forecasts have been generated.')
         st.caption(f'Diagnostic: {type(exc).__name__}: {exc}')
+        st.info('Check the NEA_API_KEY secret and Streamlit logs. HTTP 401/403 means authentication; HTTP 429 means rate limiting; schema errors indicate the API response format has changed.')
         return
     observed=latest[latest.region.eq(region)].sort_values('timestamp')
     if observed.empty:
