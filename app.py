@@ -63,26 +63,6 @@ st.markdown("""
     color: #000000 !important;
     opacity: 1 !important;
 }
-
-/* General dashboard text */
-.stMarkdown p,
-.stMarkdown span,
-.stMarkdown label {
-    color: #000000 !important;
-}
-
-/* Tabs and section labels */
-button[data-baseweb="tab"] {
-    color: #000000 !important;
-    font-weight: 600 !important;
-}
-
-/* Sidebar text */
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] label {
-    color: #000000 !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
