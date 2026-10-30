@@ -56,13 +56,6 @@ st.markdown("""
     color: #000000 !important;
     opacity: 1 !important;
 }
-
-/* Card text and captions */
-[data-testid="stCaptionContainer"],
-[data-testid="stCaptionContainer"] p {
-    color: #000000 !important;
-    opacity: 1 !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
