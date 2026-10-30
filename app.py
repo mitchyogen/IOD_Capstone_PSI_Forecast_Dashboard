@@ -150,9 +150,26 @@ def live_dashboard():
             wx=aggregate_weather(weather,coords)
             # Only hourly completed observations are used, and historic feature windows
             # must be complete. No imputation outside the model's fitted preprocessor.
-            as_of=pd.Timestamp(latest_ts).floor('h')
-            row,context=features_for_region(historical,wx,coords,region,as_of,list(bundle['feature_columns']))
-            prediction=predict(bundle,row)
+            # Weather readings from hour h are labelled as available at h+1.
+            # The latest PSI hour may therefore have no available weather yet.
+            # Try the latest common completed hours, never future observations.
+            psi_hours = set(pd.to_datetime(historical.loc[historical.region.eq(region),'timestamp']).dt.floor('h'))
+            weather_hours = set(pd.to_datetime(wx.loc[wx.region.eq(region),'timestamp']).dt.floor('h'))
+            candidate_hours = sorted(psi_hours & weather_hours, reverse=True)
+            if not candidate_hours:
+                raise NEAError('No overlapping regional PSI and weather hours')
+            failures = []
+            for candidate in candidate_hours[:8]:
+                try:
+                    if pd.Timestamp(latest_ts) - candidate > pd.Timedelta(hours=3):
+                        raise NEAError('Latest complete input hour is more than 3 hours behind current PSI')
+                    row,context=features_for_region(historical,wx,coords,region,candidate,list(bundle['feature_columns']))
+                    prediction=predict(bundle,row)
+                    break
+                except Exception as candidate_exc:
+                    failures.append(f'{candidate}: {type(candidate_exc).__name__}: {candidate_exc}')
+            if prediction is None:
+                raise NEAError('No usable forecast origin. Latest attempts: ' + ' | '.join(failures[:4]))
             forecast_status='Experimental model forecast'
         except Exception as exc:
             forecast_status='Forecast unavailable: incomplete or incompatible inputs'
