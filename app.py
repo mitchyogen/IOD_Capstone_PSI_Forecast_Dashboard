@@ -135,37 +135,10 @@ def psi_plot(data:pd.DataFrame, region:str, prediction:float|None=None, target_t
                                  name='Model forecast (+3h)'))
     fig.update_layout(height=340,margin=dict(l=12,r=12,t=20,b=10),
         plot_bgcolor='white',paper_bgcolor='white',font=dict(color='#18324B'),
-        xaxis=dict(title='',showgrid=True,gridcolor='#EDF2F5'),
-        yaxis=dict(title='24-hour PSI',showgrid=True,gridcolor='#EDF2F5'),
-        legend=dict(orientation='h',y=-.22))
-    
-    fig.update_layout(
-        font=dict(
-            family="Arial, sans-serif",
-            size=13,
-            color="#000000"
-        ),
-        title_font=dict(
-            size=18,
-            color="#000000"
-        ),
-        xaxis=dict(
-            title_font=dict(color="#000000"),
-            tickfont=dict(color="#000000")
-        ),
-        yaxis=dict(
-            title_font=dict(color="#000000"),
-            tickfont=dict(color="#000000")
-        ),
-        legend=dict(
-            font=dict(color="#000000")
-        ),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)"
-    )
-
+        xaxis=dict(title='',showgrid=True,gridcolor='#EDF2F5',title_font=dict(color="#000000"),tickfont=dict(color="#000000")),
+        yaxis=dict(title='24-hour PSI',showgrid=True,gridcolor='#EDF2F5',title_font=dict(color="#000000"),tickfont=dict(color="#000000")),
+        legend=dict(orientation='h',y=-.22,color="#000000"))
     return fig
-
 
 def data_age(ts):
     latest=pd.Timestamp(ts)
