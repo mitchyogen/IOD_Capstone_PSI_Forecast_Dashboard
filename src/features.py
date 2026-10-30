@@ -97,8 +97,11 @@ def features_for_region(psi:pd.DataFrame, weather_hourly:pd.DataFrame, coords:di
         raise NEAError(f'Incomplete 24-hour PSI history for {region}')
     if frame.pm25_twenty_four_hourly.iloc[-7:-1].isna().any():
         raise NEAError(f'Incomplete PM2.5 history for {region}')
-    if frame[WX_COLS].iloc[-7:].isna().any().any():
-        raise NEAError(f'Incomplete 6-hour weather history for {region}')
+    # Training uses an imputer for lagged weather features. Requiring a perfect
+    # seven-hour weather series is stricter than the training notebook and
+    # unnecessarily prevents live predictions. Current weather remains mandatory.
+    # Missing lag/rolling values may be passed to the fitted training imputer.
+
     # Predictor naming follows the metadata stored in joblib.
     for lag in [1,2,3,6,12,24]:frame[f'psi_lag_{lag}h']=frame.psi_twenty_four_hourly.shift(lag)
     for lag in [1,3,6]:frame[f'pm25_lag_{lag}h']=frame.pm25_twenty_four_hourly.shift(lag)
@@ -122,9 +125,13 @@ def features_for_region(psi:pd.DataFrame, weather_hourly:pd.DataFrame, coords:di
     row=frame.iloc[[-1]].copy()
     missing=[c for c in expected if c not in row.columns]
     if missing:raise NEAError('Model features unavailable: '+', '.join(missing))
-    if row[expected].isna().any().any():
-        missing=row[expected].columns[row[expected].isna().any()].tolist()
-        raise NEAError('Required model inputs unavailable: '+', '.join(missing))
+    # Do not invent values: the fitted preprocessing pipeline imputes missing
+    # historical predictors, exactly as it did during training. The observed
+    # current PSI and five weather groups are explicitly checked above.
+    # Guard against an entirely absent weather history.
+    weather_history_cols = [c for c in expected if c.startswith('weather_') and c not in WX_COLS]
+    if weather_history_cols and row[weather_history_cols].notna().sum(axis=1).iloc[0] == 0:
+        raise NEAError('All engineered weather history is missing at this forecast hour')
     context={'as_of':cutoff,'region':region,'psi':float(row.psi_twenty_four_hourly.iloc[0]),
              'weather':{col:float(row[col].iloc[0]) for col in WX_COLS}}
     return row[expected].copy(),context

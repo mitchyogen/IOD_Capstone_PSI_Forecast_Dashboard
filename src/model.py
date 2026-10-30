@@ -38,8 +38,11 @@ def load_bundle(path: str | Path):
 
 def predict(bundle,row):
     cols=list(bundle['feature_columns'])
-    if list(row.columns)!=cols or row[cols].isna().any().any():
+    if list(row.columns)!=cols:
         raise ModelError('Prediction input has missing, additional or incorrectly ordered columns')
+    # Missing lagged values are handled by the model's fitted imputer.
+    # Missing current observations are rejected upstream in features_for_region.
+
     raw=bundle['pipeline'].predict(row)
     pred=float(np.asarray(raw).reshape(-1)[0])
     if not np.isfinite(pred):raise ModelError('Prediction was not finite')
