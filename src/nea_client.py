@@ -24,7 +24,7 @@ class NEAError(RuntimeError):
 class NEAClient:
     api_key: str = ''
     timeout: int = 25
-    max_pages: int = 50
+    max_pages: int = 500
 
     def _request(self, variable: str, params: dict | None = None) -> dict:
         if variable not in ENDPOINTS:
@@ -41,7 +41,7 @@ class NEAClient:
                 if response.status_code >= 400:
                     raise NEAError(f'NEA {variable} HTTP {response.status_code}: {response.text[:180]}')
                 payload = response.json()
-                if not isinstance(payload, dict) or payload.get('code') not in (0, None):
+                if not isinstance(payload, dict) or payload.get('code') not in (0, 1, None):
                     raise NEAError(f'NEA {variable} API error: code={payload.get("code")}, message={str(payload.get("errorMsg", payload.get("message", "")))[:180]}')
                 return payload
             except requests.RequestException as exc:
@@ -59,14 +59,14 @@ class NEAClient:
             payload = self._request(variable, params)
             body = payload.get('data', {})
             if isinstance(body, dict):
-                current = body.get('readings', body.get('items', []))
+                current = body.get('readings', body.get('items', body.get('records', [])))
                 if not isinstance(current, list):
                     raise NEAError(f'Unexpected {variable} readings schema')
                 readings.extend(current)
                 if 'stations' in body:
                     metadata['stations'] = body['stations']
-                if 'region_metadata' in body:
-                    metadata['region_metadata'] = body['region_metadata']
+                if 'region_metadata' in body or 'regionMetadata' in body:
+                    metadata['region_metadata'] = body.get('region_metadata', body.get('regionMetadata'))
                 token = body.get('paginationToken') or body.get('pagination_token')
             else:
                 raise NEAError(f'Unexpected {variable} data schema')
@@ -77,7 +77,7 @@ class NEAClient:
                 raise NEAError('NEA returned a repeated pagination token')
             seen_tokens.add(token)
             params['paginationToken'] = token
-        raise NEAError('NEA response exceeded configured pagination limit')
+        raise NEAError(f'NEA {variable} for {when} exceeded {self.max_pages} pages; request narrower time windows or review API pagination. No partial data used.')
 
 
 def _local_time(value):
@@ -89,7 +89,7 @@ def parse_psi(rows: list[dict], meta: dict) -> tuple[pd.DataFrame,dict]:
     coords = {}
     for item in meta.get('region_metadata', []):
         name = str(item.get('name', '')).lower()
-        loc = item.get('label_location') or item.get('location') or {}
+        loc = item.get('label_location') or item.get('labelLocation') or item.get('location') or {}
         if name and 'latitude' in loc and 'longitude' in loc:
             coords[name] = (float(loc['latitude']),float(loc['longitude']))
     records = []
@@ -116,7 +116,7 @@ def parse_weather(rows: list[dict], meta: dict, variable: str) -> pd.DataFrame:
     stations = {}
     for st in meta.get('stations', []):
         sid = str(st.get('id') or st.get('stationId') or '')
-        loc = st.get('location') or {}
+        loc = st.get('location') or st.get('labelLocation') or st.get('label_location') or {}
         if sid and 'latitude' in loc and 'longitude' in loc:
             stations[sid] = (float(loc['latitude']),float(loc['longitude']))
     output = []
