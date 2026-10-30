@@ -27,6 +27,65 @@ CSS='''
 [data-testid="stMetricLabel"] {color:#536C80}
 .section-title {font-size:1.19rem;font-weight:740;color:#18324B;margin-top:1rem}
 </style>'''
+
+# ------------------------------------------------------------
+# UI Styling: Improve Text Contrast
+# ------------------------------------------------------------
+
+st.markdown("""
+<style>
+
+/* KPI card labels */
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] p {
+    color: #000000 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* KPI card values */
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] div {
+    color: #000000 !important;
+    opacity: 1 !important;
+}
+
+/* KPI descriptions and delta text */
+[data-testid="stMetricDelta"],
+[data-testid="stMetricDelta"] div {
+    color: #000000 !important;
+    opacity: 1 !important;
+}
+
+/* Card text and captions */
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p {
+    color: #000000 !important;
+    opacity: 1 !important;
+}
+
+/* General dashboard text */
+.stMarkdown p,
+.stMarkdown span,
+.stMarkdown label {
+    color: #000000 !important;
+}
+
+/* Tabs and section labels */
+button[data-baseweb="tab"] {
+    color: #000000 !important;
+    font-weight: 600 !important;
+}
+
+/* Sidebar text */
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] label {
+    color: #000000 !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown(CSS,unsafe_allow_html=True)
 
 @st.cache_data(ttl=900,show_spinner=False)
@@ -79,6 +138,32 @@ def psi_plot(data:pd.DataFrame, region:str, prediction:float|None=None, target_t
         xaxis=dict(title='',showgrid=True,gridcolor='#EDF2F5'),
         yaxis=dict(title='24-hour PSI',showgrid=True,gridcolor='#EDF2F5'),
         legend=dict(orientation='h',y=-.22))
+    
+    fig.update_layout(
+        font=dict(
+            family="Arial, sans-serif",
+            size=13,
+            color="#000000"
+        ),
+        title_font=dict(
+            size=18,
+            color="#000000"
+        ),
+        xaxis=dict(
+            title_font=dict(color="#000000"),
+            tickfont=dict(color="#000000")
+        ),
+        yaxis=dict(
+            title_font=dict(color="#000000"),
+            tickfont=dict(color="#000000")
+        ),
+        legend=dict(
+            font=dict(color="#000000")
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+
     return fig
 
 
