@@ -38,10 +38,11 @@ class NEAClient:
                 response = requests.get(url, params=params, headers=headers, timeout=self.timeout)
                 if response.status_code in (429, 500, 502, 503, 504) and attempt < 2:
                     time.sleep(1.5 * (attempt + 1)); continue
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    raise NEAError(f'NEA {variable} HTTP {response.status_code}: {response.text[:180]}')
                 payload = response.json()
                 if not isinstance(payload, dict) or payload.get('code') not in (0, None):
-                    raise NEAError(f'NEA returned an unsuccessful response for {variable}')
+                    raise NEAError(f'NEA {variable} API error: code={payload.get("code")}, message={str(payload.get("errorMsg", payload.get("message", "")))[:180]}')
                 return payload
             except requests.RequestException as exc:
                 if attempt == 2:
@@ -58,7 +59,7 @@ class NEAClient:
             payload = self._request(variable, params)
             body = payload.get('data', {})
             if isinstance(body, dict):
-                current = body.get('readings', [])
+                current = body.get('readings', body.get('items', []))
                 if not isinstance(current, list):
                     raise NEAError(f'Unexpected {variable} readings schema')
                 readings.extend(current)
@@ -93,7 +94,7 @@ def parse_psi(rows: list[dict], meta: dict) -> tuple[pd.DataFrame,dict]:
             coords[name] = (float(loc['latitude']),float(loc['longitude']))
     records = []
     for row in rows:
-        stamp = row.get('timestamp') or row.get('update_timestamp')
+        stamp = row.get('timestamp') or row.get('update_timestamp') or row.get('updatedTimestamp')
         fields = row.get('readings') or row.get('data')
         if not stamp or not isinstance(fields, dict):
             continue
@@ -107,7 +108,7 @@ def parse_psi(rows: list[dict], meta: dict) -> tuple[pd.DataFrame,dict]:
                 if isinstance(value, dict): item[field] = pd.to_numeric(value.get(region), errors='coerce')
             records.append(item)
     result = pd.DataFrame(records)
-    if result.empty: raise NEAError('No parseable regional PSI readings')
+    if result.empty: raise NEAError(f'No parseable regional PSI readings. Received {len(rows)} API records; first record keys: {list(rows[0]) if rows else []}')
     return result.drop_duplicates(['timestamp','region'], keep='last'),coords
 
 
