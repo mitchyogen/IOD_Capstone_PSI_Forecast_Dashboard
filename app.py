@@ -236,7 +236,7 @@ def live_dashboard():
             st.metric('Predicted 24-hour PSI','Not available')
             st.caption('No unverified numerical prediction is shown.')
         else:
-            st.metric('Predicted 24-hour PSI',f'{round(prediction)}',delta=f'{round(prediction}}' vs observed PSI',delta_color='off')
+            st.metric('Predicted 24-hour PSI',f'{round(prediction)}',delta=f'{round(prediction} vs observed PSI'},delta_color='off')
             st.caption(f'Model origin: {context["as_of"]:%d %b %Y %H:%M} SGT | Target: {context["as_of"]+pd.Timedelta(hours=3):%H:%M} SGT')
             st.caption('Research estimate, not an NEA forecast or health advisory. Test MAE 1.3086 is an average from 2024, not a prediction interval.')
     with b:
