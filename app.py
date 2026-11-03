@@ -27,38 +27,6 @@ CSS='''
 [data-testid="stMetricLabel"] {color:#536C80}
 .section-title {font-size:1.19rem;font-weight:740;color:#18324B;margin-top:1rem}
 </style>'''
-
-# ------------------------------------------------------------
-# UI Styling: Improve Text Contrast
-# ------------------------------------------------------------
-
-st.markdown("""
-<style>
-
-/* KPI card labels */
-[data-testid="stMetricLabel"],
-[data-testid="stMetricLabel"] p {
-    color: #000000 !important;
-    font-weight: 600 !important;
-    opacity: 1 !important;
-}
-
-/* KPI card values */
-[data-testid="stMetricValue"],
-[data-testid="stMetricValue"] div {
-    color: #000000 !important;
-    opacity: 1 !important;
-}
-
-/* KPI descriptions and delta text */
-[data-testid="stMetricDelta"],
-[data-testid="stMetricDelta"] div {
-    color: #000000 !important;
-    opacity: 1 !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.markdown(CSS,unsafe_allow_html=True)
 
 @st.cache_data(ttl=900,show_spinner=False)
@@ -78,12 +46,40 @@ def cached_latest(api_key: str):
 @st.cache_data(ttl=900,show_spinner=False)
 def cached_recent(api_key: str, last_day: str):
     end=pd.Timestamp(last_day).date()
-    days=[end-timedelta(days=i) for i in range(3,-1,-1)]
+    # 3 calendar days cover the 26-hour feature lookback even just after midnight.
+    days=[end-timedelta(days=i) for i in range(2,-1,-1)]
     return fetch_recent(NEAClient(api_key=api_key),days)
 
 @st.cache_resource(show_spinner=False)
 def cached_model():
     return load_bundle(MODEL)
+
+@st.cache_data(ttl=900, show_spinner=False, max_entries=30)
+def cached_region_forecast(region: str, refresh_bucket: str, _historical, _weather, _coords):
+    """Avoid repeating aggregation, feature generation and model inference on reruns.
+
+    refresh_bucket is a 15-minute key; underscore arguments are deliberately not
+    hashed. Cache invalidation is controlled by that key and the selected region.
+    """
+    bundle = cached_model()
+    wx = aggregate_weather(_weather, _coords)
+    psi_hours = set(pd.to_datetime(_historical.loc[_historical.region.eq(region), 'timestamp']).dt.floor('h'))
+    weather_hours = set(pd.to_datetime(wx.loc[wx.region.eq(region), 'timestamp']).dt.floor('h'))
+    candidate_hours = sorted(psi_hours & weather_hours, reverse=True)
+    if not candidate_hours:
+        raise NEAError('No overlapping regional PSI and weather hours')
+    latest_psi = _historical.loc[_historical.region.eq(region), 'timestamp'].max()
+    failures = []
+    for candidate in candidate_hours[:8]:
+        try:
+            if pd.Timestamp(latest_psi) - candidate > pd.Timedelta(hours=3):
+                raise NEAError('Latest complete input hour is more than 3 hours behind current PSI')
+            row, context = features_for_region(_historical, wx, _coords, region, candidate, list(bundle['feature_columns']))
+            return predict(bundle, row), context
+        except Exception as exc:
+            failures.append(f'{candidate}: {type(exc).__name__}: {exc}')
+    raise NEAError('No usable forecast origin. Latest attempts: ' + ' | '.join(failures[:4]))
+
 
 
 def status_for_psi(value):
@@ -106,13 +102,13 @@ def psi_plot(data:pd.DataFrame, region:str, prediction:float|None=None, target_t
                                  y=[g.psi_twenty_four_hourly.iloc[-1],prediction],
                                  mode='lines+markers',line=dict(color='#16877D',width=3,dash='dash'),
                                  name='Model forecast (+3h)'))
-    
     fig.update_layout(height=340,margin=dict(l=12,r=12,t=20,b=10),
-            plot_bgcolor='white',paper_bgcolor='white',font=dict(color='#18324B'),
-            xaxis=dict(title='',showgrid=True,gridcolor='#EDF2F5',title_font=dict(color="#000000"),tickfont=dict(color="#000000")),
-            yaxis=dict(title='24-hour PSI',showgrid=True,gridcolor='#EDF2F5',title_font=dict(color="#000000"),tickfont=dict(color="#000000")),
-            legend=dict(orientation='h',y=-.22,font=dict(color="#000000")))
+        plot_bgcolor='white',paper_bgcolor='white',font=dict(color='#18324B'),
+        xaxis=dict(title='',showgrid=True,gridcolor='#EDF2F5'),
+        yaxis=dict(title='24-hour PSI',showgrid=True,gridcolor='#EDF2F5'),
+        legend=dict(orientation='h',y=-.22))
     return fig
+
 
 def data_age(ts):
     latest=pd.Timestamp(ts)
@@ -164,50 +160,39 @@ def live_dashboard():
     st.caption('The PSI shown above is an official observation. The model forecast, if enabled, is a separate research estimate.')
     st.divider()
     prediction=None;context=None;forecast_status='Forecast unavailable'
+    prediction=None;context=None
     historical=None;weather=None
     try:
-        historical,weather,coords=cached_recent(api_key,now.date().isoformat())
-        coords.update(latlon)
+        enabled=bool(st.secrets.get('ENABLE_FORECAST',False))
+    except Exception:
+        enabled=False
+
+    # Render a real loading placeholder before the slower historical requests.
+    loading_area=st.empty()
+    try:
+        with loading_area.container():
+            with st.status('Loading recent NEA observations and weather history...', expanded=False) as status:
+                st.caption('Fetching cached hourly inputs. First load may take longer; subsequent refreshes reuse data for 15 minutes.')
+                historical,weather,coords=cached_recent(api_key,now.date().isoformat())
+                coords.update(latlon)
+                status.update(label='Recent observations ready',state='complete',expanded=False)
     except Exception as exc:
+        loading_area.empty()
         st.info('Historical API data could not be assembled. Showing official observations only.')
         st.caption(f'Historical-data diagnostic: {type(exc).__name__}: {exc}')
+    else:
+        loading_area.empty()
 
-    # A source-and-training parity test is required before enabling numeric forecasts.
-    # A model load alone is not enough to validate live feature engineering.
-    try:enabled=bool(st.secrets.get('ENABLE_FORECAST',False))
-    except Exception:enabled=False
     if enabled and historical is not None and not staleness:
-        try:
-            bundle=cached_model()
-            wx=aggregate_weather(weather,coords)
-            # Only hourly completed observations are used, and historic feature windows
-            # must be complete. No imputation outside the model's fitted preprocessor.
-            # Weather readings from hour h are labelled as available at h+1.
-            # The latest PSI hour may therefore have no available weather yet.
-            # Try the latest common completed hours, never future observations.
-            psi_hours = set(pd.to_datetime(historical.loc[historical.region.eq(region),'timestamp']).dt.floor('h'))
-            weather_hours = set(pd.to_datetime(wx.loc[wx.region.eq(region),'timestamp']).dt.floor('h'))
-            candidate_hours = sorted(psi_hours & weather_hours, reverse=True)
-            if not candidate_hours:
-                raise NEAError('No overlapping regional PSI and weather hours')
-            failures = []
-            for candidate in candidate_hours[:8]:
-                try:
-                    if pd.Timestamp(latest_ts) - candidate > pd.Timedelta(hours=3):
-                        raise NEAError('Latest complete input hour is more than 3 hours behind current PSI')
-                    row,context=features_for_region(historical,wx,coords,region,candidate,list(bundle['feature_columns']))
-                    prediction=predict(bundle,row)
-                    break
-                except Exception as candidate_exc:
-                    failures.append(f'{candidate}: {type(candidate_exc).__name__}: {candidate_exc}')
-            if prediction is None:
-                raise NEAError('No usable forecast origin. Latest attempts: ' + ' | '.join(failures[:4]))
-            forecast_status='Experimental model forecast'
-        except Exception as exc:
-            forecast_status='Forecast unavailable: incomplete or incompatible inputs'
-            st.info(forecast_status)
-            with st.expander('Technical reason'):
-                st.code(f'{type(exc).__name__}: {exc}')
+        with st.spinner('Preparing regional weather features and generating your 3-hour PSI forecast...',show_time=True):
+            try:
+                # Cache the expensive inference work by region and 15-minute interval.
+                refresh_bucket=now.strftime('%Y-%m-%d-%H-')+str(now.minute//15)
+                prediction,context=cached_region_forecast(region,refresh_bucket,historical,weather,coords)
+            except Exception as exc:
+                st.info('Forecast unavailable: incomplete or incompatible inputs')
+                with st.expander('Technical reason'):
+                    st.code(f'{type(exc).__name__}: {exc}')
     elif not enabled:
         st.info('Experimental forecasts are disabled until the live NEA feature reconstruction has passed training-parity and dependency checks. Observed data remains available.')
     elif staleness:
