@@ -29,6 +29,37 @@ CSS='''
 </style>'''
 st.markdown(CSS,unsafe_allow_html=True)
 
+# ------------------------------------------------------------
+# UI Styling: Improve Text Contrast
+# ------------------------------------------------------------
+
+st.markdown("""
+<style>
+
+/* KPI card labels */
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] p {
+    color: #000000 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* KPI card values */
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] div {
+    color: #000000 !important;
+    opacity: 1 !important;
+}
+
+/* KPI descriptions and delta text */
+[data-testid="stMetricDelta"],
+[data-testid="stMetricDelta"] div {
+    color: #000000 !important;
+    opacity: 1 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 @st.cache_data(ttl=900,show_spinner=False)
 def cached_latest(api_key: str):
     client=NEAClient(api_key=api_key)
